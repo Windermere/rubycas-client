@@ -1,5 +1,102 @@
 = RubyCAS-Client Changelog
 
+== Version 2.3.10.rc1 :: 2013-03-18
+
+* Bug Fixes
+  * Fixed bug where ActiveRecordTicketStore failed to add the service
+    ticket to the sessions table
+  * Fixed compatibility of login_to_service with rubycas-server 1.1.x (@bradseefeld)
+  * Fix an issue that prevented inspection of faked extra attributes on the filter (@yurikoval)
+  * Fix travis builds running incorrectly (@tpicket66)
+  * Remove dependency on rubycas-client-rails when Rails 3.x is being used (@KrisSiegel)
+  * Fix an issue where the Ticket Store might break under Rails 3.x
+  * Fix loading the ActiveRecordTicketStore by symbol
+
+* Other
+  * Vastly expand combinations of ruby and rails versions that are considered supported. - see .travis.yml
+
+== Version 2.3.9 :: 2012-06-20
+
+* Other
+  * ci against lots more ruby versions - see .travis.yml and the travis
+    status page
+
+== Version 2.3.9rc1 :: 2012-03-24
+
+* Bug Fixes
+  * Fixed issue that caused Single Sign Out to fail (@bryanlarsen and @soorajb)
+  * Fixed issue in Filter#unauthorized! (@mscottford)
+  * Fixed #38, boolean values are now preserved in extra attribute yaml
+    parsing
+
+* New functionality
+  * Tweak the CasProxyCallbackController so it can be used with
+    rubycas-client-rails in Rails 3 (@bryanlarsen)
+  * Add support for calling the CAS Server through an HTTP proxy (@shevaun)
+  * Add support for specifying the service url to be added to the
+    logout url (@dyson)
+  * add support for extra attributes as xml attributes (@bhenderson)
+  * Add :raw mode to extra attribute parsing
+
+* Other
+  * Made writing and running rspec tests much easier
+  * Added tests for Ticket Stores
+  * Official support for jruby 1.6
+
+== Version 2.3.8 :: 2011-12-19
+
+* Bug Fixes
+  * Fix some undesired behavior when parsing extra attributes as JSON
+    * Simple attributes (that aren't JSON Objects) stay strings
+    * We don't fallback to the YAML parser if JSON parsing fails
+
+== Version 2.3.7 :: 2011-11-29
+
+* Bug Fixes
+  * Fixed bug in how service_urls with query parameters are handled
+  * Fixed issue with setting correct temp directory under Rails 3.1
+
+== Version 2.3.6 :: 2011-11-22
+
+* Bug Fixes
+  * Don't attempt to store single sign out information if sessions
+    aren't enabled for this request. Fixes a problem were we were
+    blowing up trying to modify a frozen session
+
+== Version 2.3.5 :: 2011-11-17
+
+* Bug Fixes
+  * read_service_url will no longer include POST parameters on the
+    service url
+
+== Version 2.3.3 :: 2011-11-11
+
+* Bug Fixes
+  * Removed a puts that didn't get cleaned up
+  * Fix a bug with parsing extra attributes caused by a strange edge
+    case in active_support
+
+== Version 2.3.1 :: 2011-10-22
+
+* New Functionality
+  * Add configuration option to expect complex extra attributes to be encoded
+    in json instead of yaml
+  * Split out storage mechanism for single sign out and proxy ticket storage so
+    that it is modular
+
+* Changes to existing functionality
+  * Change gem building from hoe to jeweler
+  * expect extra attributes to be nested under a cas:attributes elemenet to
+    improve compatibility with other extra attribute implementations
+  * Unauthorized requests to URLs ending in .json now show an JSON formatted
+    response
+
+* Bug Fixes
+  * Fixed bug introduced by upstream patch that broke proxy ticket validation
+    when using extra attributes
+  * Fixed bug where extra attributes key was set on the session with a null
+    value when faking with no extra attributes
+
 == Version 2.2.1 :: 2010-06-24
 
 * Removed a 3rd party patch to the logging mechanism that broke the client under
@@ -12,7 +109,7 @@ See http://www.opensource.org/licenses/mit-license.php
 
 * New functionality:
   * Added config parameter force_ssl_verification (self explanatory) [Roberto Klein]
-  * Added explicit SingleSignutFilter for Rails (convenient?) [Adam Elliot]
+  * Added explicit SingleSigoutFilter for Rails (convenient?) [Adam Elliot]
   * Added support for faking out the filter; useful when testing. See
     http://github.com/gunark/rubycas-client/commit/1eb10cc285d59193eede3d4406f95cad9db9d93a
     [Brian Hogan]

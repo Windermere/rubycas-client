@@ -2,7 +2,7 @@ module CASClient
   module Frameworks
     module Rails
       class Filter
-        cattr_reader :config, :log, :client
+        cattr_reader :config, :log, :client, :fake_user, :fake_extra_attributes
         
         # These are initialized when you call configure.
         @@config = nil
@@ -10,6 +10,10 @@ module CASClient
         @@log = nil
         @@fake_user = nil
         @@fake_extra_attributes = nil
+
+        def self.before(controller)
+          self.filter controller
+        end
         
         class << self
           def filter(controller)
@@ -18,12 +22,12 @@ module CASClient
             if @@fake_user
               controller.session[client.username_session_key] = @@fake_user
               controller.session[:casfilteruser] = @@fake_user
-              controller.session[client.extra_attributes_session_key] = @@fake_extra_attributes
+              controller.session[client.extra_attributes_session_key] = @@fake_extra_attributes if @@fake_extra_attributes
               return true
             end
             
-            
             last_st = controller.session[:cas_last_valid_ticket]
+            last_st_service = controller.session[:cas_last_valid_ticket_service]
             
             if single_sign_out(controller)
               controller.send(:render, :text => "CAS Single-Sign-Out request intercepted.")
@@ -32,17 +36,14 @@ module CASClient
 
             st = read_ticket(controller)
             
-            is_new_session = true
-            
             if st && last_st && 
-                last_st.ticket == st.ticket && 
-                last_st.service == st.service
+                last_st == st.ticket && 
+                last_st_service == st.service
               # warn() rather than info() because we really shouldn't be re-validating the same ticket. 
               # The only situation where this is acceptable is if the user manually does a refresh and 
               # the same ticket happens to be in the URL.
               log.warn("Re-using previously validated ticket since the ticket id and service are the same.")
-              st = last_st
-              is_new_session = false
+              return true
             elsif last_st &&
                 !config[:authenticate_on_every_request] && 
                 controller.session[client.username_session_key]
@@ -54,44 +55,42 @@ module CASClient
               # the :authenticate_on_every_request config option to true. However, this is not desirable since
               # it will almost certainly break POST request, AJAX calls, etc.
               log.debug "Existing local CAS session detected for #{controller.session[client.username_session_key].inspect}. "+
-                "Previous ticket #{last_st.ticket.inspect} will be re-used."
-              st = last_st
-              is_new_session = false
+                "Previous ticket #{last_st.inspect} will be re-used."
+              return true
             end
             
             if st
               client.validate_service_ticket(st) unless st.has_been_validated?
-              vr = st.response
               
               if st.is_valid?
-                if is_new_session
-                  log.info("Ticket #{st.ticket.inspect} for service #{st.service.inspect} belonging to user #{vr.user.inspect} is VALID.")
-                  controller.session[client.username_session_key] = vr.user.dup
-                  controller.session[client.extra_attributes_session_key] = HashWithIndifferentAccess.new(vr.extra_attributes) if vr.extra_attributes
+                #if is_new_session
+                  log.info("Ticket #{st.ticket.inspect} for service #{st.service.inspect} belonging to user #{st.user.inspect} is VALID.")
+                  controller.session[client.username_session_key] = st.user.dup
+                  controller.session[client.extra_attributes_session_key] = HashWithIndifferentAccess.new(st.extra_attributes) if st.extra_attributes
                   
-                  if vr.extra_attributes
-                    log.debug("Extra user attributes provided along with ticket #{st.ticket.inspect}: #{vr.extra_attributes.inspect}.")
+                  if st.extra_attributes
+                    log.debug("Extra user attributes provided along with ticket #{st.ticket.inspect}: #{st.extra_attributes.inspect}.")
                   end
                   
                   # RubyCAS-Client 1.x used :casfilteruser as it's username session key,
                   # so we need to set this here to ensure compatibility with configurations
                   # built around the old client.
-                  controller.session[:casfilteruser] = vr.user
+                  controller.session[:casfilteruser] = st.user
                   
                   if config[:enable_single_sign_out]
-                    f = store_service_session_lookup(st, controller.request.session_options[:id] || controller.session.session_id)
-                    log.debug("Wrote service session lookup file to #{f.inspect} with session id #{controller.request.session_options[:id] || controller.session.session_id.inspect}.")
+                    client.ticket_store.store_service_session_lookup(st, controller)
                   end
-                end
+                #end
               
                 # Store the ticket in the session to avoid re-validating the same service
                 # ticket with the CAS server.
-                controller.session[:cas_last_valid_ticket] = st
+                controller.session[:cas_last_valid_ticket] = st.ticket
+                controller.session[:cas_last_valid_ticket_service] = st.service
                 
-                if vr.pgt_iou
-                  unless controller.session[:cas_pgt] && controller.session[:cas_pgt].ticket && controller.session[:cas_pgt].iou == vr.pgt_iou
+                if st.pgt_iou
+                  unless controller.session[:cas_pgt] && controller.session[:cas_pgt].ticket && controller.session[:cas_pgt].iou == st.pgt_iou
                     log.info("Receipt has a proxy-granting ticket IOU. Attempting to retrieve the proxy-granting ticket...")
-                    pgt = client.retrieve_proxy_granting_ticket(vr.pgt_iou)
+                    pgt = client.retrieve_proxy_granting_ticket(st.pgt_iou)
 
                     if pgt
                       log.debug("Got PGT #{pgt.ticket.inspect} for PGT IOU #{pgt.iou.inspect}. This will be stored in the session.")
@@ -99,18 +98,16 @@ module CASClient
                       # For backwards compatibility with RubyCAS-Client 1.x configurations...
                       controller.session[:casfilterpgt] = pgt
                     else
-                      log.error("Failed to retrieve a PGT for PGT IOU #{vr.pgt_iou}!")
+                      log.error("Failed to retrieve a PGT for PGT IOU #{st.pgt_iou}!")
                     end
                   else
-                    log.info("PGT is present in session and PGT IOU #{vr.pgt_iou} matches the saved PGT IOU.  Not retrieving new PGT.")
+                    log.info("PGT is present in session and PGT IOU #{st.pgt_iou} matches the saved PGT IOU.  Not retrieving new PGT.")
                   end
-
                 end
-                
                 return true
               else
-                log.warn("Ticket #{st.ticket.inspect} failed validation -- #{vr.failure_code}: #{vr.failure_message}")
-                unauthorized!(controller, vr)
+                log.warn("Ticket #{st.ticket.inspect} failed validation -- #{st.failure_code}: #{st.failure_message}")
+                unauthorized!(controller, st)
                 return false
               end
             else # no service ticket was present in the request
@@ -140,7 +137,7 @@ module CASClient
           
           def configure(config)
             @@config = config
-            @@config[:logger] = RAILS_DEFAULT_LOGGER unless @@config[:logger]
+            @@config[:logger] = ::Rails.logger unless @@config[:logger]
             @@client = CASClient::Client.new(config)
             @@log = client.log
           end
@@ -219,17 +216,28 @@ module CASClient
           def logout(controller, service = nil)
             referer = service || controller.request.referer
             st = controller.session[:cas_last_valid_ticket]
-            delete_service_session_lookup(st) if st
+            @@client.ticket_store.cleanup_service_session_lookup(st) if st
             controller.send(:reset_session)
             controller.send(:redirect_to, client.logout_url(referer))
           end
           
           def unauthorized!(controller, vr = nil)
-            if controller.params[:format] == "xml"
+            format = nil
+            unless controller.request.format.nil?
+              format = controller.request.format.to_sym
+            end
+            format = (format == :js ? :json : format)
+            case format
+            when :xml, :json
               if vr
-                controller.send(:render, :xml => "<errors><error>#{vr.failure_message}</error></errors>", :status => 401)
+                case format
+                when :xml
+                  controller.send(:render, :xml => { :error => vr.failure_message }.to_xml(:root => 'errors'), :status => :unauthorized)
+                when :json
+                  controller.send(:render, :json => { :errors => { :error => vr.failure_message }}, :status => :unauthorized)
+                end
               else
-                controller.send(:head, 401)
+                controller.send(:head, :unauthorized)
               end
             else
               redirect_to_cas_for_authentication(controller)
@@ -278,8 +286,10 @@ module CASClient
             
             if controller.request.post? &&
                 controller.params['logoutRequest'] &&
-                controller.params['logoutRequest'] =~
-                  %r{^<samlp:LogoutRequest.*?<samlp:SessionIndex>(.*)</samlp:SessionIndex>}m
+                #This next line checks the logoutRequest value for both its regular and URI.escape'd form. I couldn't get
+                #it to work without URI.escaping it from rubycas server's side, this way it will work either way.
+                [controller.params['logoutRequest'],URI.unescape(controller.params['logoutRequest'])].find{|xml| xml =~
+                    %r{^<samlp:LogoutRequest.*?<samlp:SessionIndex>(.*)</samlp:SessionIndex>}m}
               # TODO: Maybe check that the request came from the registered CAS server? Although this might be
               #       pointless since it's easily spoofable...
               si = $~[1]
@@ -290,38 +300,8 @@ module CASClient
               end
               
               log.debug "Intercepted single-sign-out request for CAS session #{si.inspect}."
-              
-              begin
-                required_sess_store = ActiveRecord::SessionStore
-                current_sess_store  = ActionController::Base.session_store
-              rescue NameError
-                # for older versions of Rails (prior to 2.3)
-                required_sess_store = CGI::Session::ActiveRecordStore
-                current_sess_store  = ActionController::Base.session_options[:database_manager]
-              end
 
-
-              if current_sess_store == required_sess_store
-                session_id = read_service_session_lookup(si)
-
-                if session_id
-                  session = current_sess_store::Session.find_by_session_id(session_id)
-                  if session
-                    session.destroy
-                    log.debug("Destroyed #{session.inspect} for session #{session_id.inspect} corresponding to service ticket #{si.inspect}.")
-                  else
-                    log.debug("Data for session #{session_id.inspect} was not found. It may have already been cleared by a local CAS logout request.")
-                  end
-                  
-                  log.info("Single-sign-out for session #{session_id.inspect} completed successfuly.")
-                else
-                  log.warn("Couldn't destroy session with SessionIndex #{si} because no corresponding session id could be looked up.")
-                end
-              else
-                log.error "Cannot process logout request because this Rails application's session store is "+
-                  " #{current_sess_store.name.inspect}. Single Sign-Out only works with the "+
-                  " #{required_sess_store.name.inspect} session store."
-              end
+              @@client.ticket_store.process_single_sign_out(si)
               
               # Return true to indicate that a single-sign-out request was detected
               # and that further processing of the request is unnecessary.
@@ -349,62 +329,24 @@ module CASClient
           def returning_from_gateway?(controller)
             controller.session[:cas_sent_to_gateway]
           end
-          
+
           def read_service_url(controller)
             if config[:service_url]
               log.debug("Using explicitly set service url: #{config[:service_url]}")
               return config[:service_url]
             end
-            
-            params = controller.params.dup
+
+            params = {}.with_indifferent_access
+            params.update(controller.request.query_parameters)
+            params.update(controller.request.path_parameters)
             params.delete(:ticket)
             service_url = controller.url_for(params)
             log.debug("Guessed service url: #{service_url.inspect}")
             return service_url
           end
-          
-          # Creates a file in tmp/sessions linking a SessionTicket
-          # with the local Rails session id. The file is named
-          # cas_sess.<session ticket> and its text contents is the corresponding 
-          # Rails session id.
-          # Returns the filename of the lookup file created.
-          def store_service_session_lookup(st, sid)
-            st = st.ticket if st.kind_of? ServiceTicket
-            f = File.new(filename_of_service_session_lookup(st), 'w')
-            f.write(sid)
-            f.close
-            return f.path
-          end
-          
-          # Returns the local Rails session ID corresponding to the given
-          # ServiceTicket. This is done by reading the contents of the
-          # cas_sess.<session ticket> file created in a prior call to 
-          # #store_service_session_lookup.
-          def read_service_session_lookup(st)
-            st = st.ticket if st.kind_of? ServiceTicket
-            ssl_filename = filename_of_service_session_lookup(st)
-            return File.exists?(ssl_filename) && IO.read(ssl_filename)
-          end
-          
-          # Removes a stored relationship between a ServiceTicket and a local
-          # Rails session id. This should be called when the session is being
-          # closed.
-          #
-          # See #store_service_session_lookup.
-          def delete_service_session_lookup(st)
-            st = st.ticket if st.kind_of? ServiceTicket
-            ssl_filename = filename_of_service_session_lookup(st)
-            File.delete(ssl_filename) if File.exists?(ssl_filename)
-          end
-          
-          # Returns the path and filename of the service session lookup file.
-          def filename_of_service_session_lookup(st)
-            st = st.ticket if st.kind_of? ServiceTicket
-            return "#{RAILS_ROOT}/tmp/sessions/cas_sess.#{st}"
-          end
         end
       end
-    
+
       class GatewayFilter < Filter
         def self.use_gatewaying?
           return true unless @@config[:use_gatewaying] == false

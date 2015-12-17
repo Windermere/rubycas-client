@@ -1,36 +1,37 @@
-Gem::Specification.new do |s|
-  s.name = %q{rubycas-client}
-  s.version = "2.1.0"
+# -*- encoding: utf-8 -*-
+$LOAD_PATH << File.expand_path("../lib", __FILE__)
+require 'rubycas-client/version'
 
-  s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
-  s.authors = ["Matt Zukowski", "Matt Walker"]
-  s.date = %q{2008-11-18}
-  s.description = %q{Client library for the Central Authentication Service (CAS) protocol.}
-  s.email = %q{matt at roughest dot net}
-  s.extra_rdoc_files = ["CHANGELOG.txt", "History.txt", "LICENSE.txt", "Manifest.txt", "README.rdoc"]
-  s.files = ["CHANGELOG.txt", "History.txt", "LICENSE.txt", "Manifest.txt", "README.rdoc", "Rakefile", "init.rb", "lib/casclient.rb", "lib/casclient/client.rb",
-  "lib/casclient/frameworks/rails/cas_proxy_callback_controller.rb", "lib/casclient/frameworks/rails/filter.rb", "lib/casclient/frameworks/merb/strategy.rb", "lib/casclient/responses.rb", "lib/casclient/tickets.rb", "lib/casclient/version.rb", "lib/rubycas-client.rb", "setup.rb"]
-  #s.has_rdoc = true
-  s.homepage = %q{http://rubycas-client.rubyforge.org}
-  s.rdoc_options = ["--main", "README.txt"]
-  s.require_paths = ["lib"]
-  s.rubyforge_project = %q{rubycas-client}
-  s.rubygems_version = %q{1.2.0}
-  s.summary = %q{Client library for the Central Authentication Service (CAS) protocol.}
+Gem::Specification.new do |gem|
+  gem.authors = ["Matt Campbell", "Matt Zukowski", "Matt Walker", "Matt Campbell"]
+  gem.email         = ["matt@soupmatt.com"]
+  gem.summary = %q{Client library for the Central Authentication Service (CAS) protocol.}
+  gem.description = %q{Client library for the Central Authentication Service (CAS) protocol.}
+  gem.homepage = "https://github.com/rubycas/rubycas-client"
+  gem.extra_rdoc_files = [
+    "LICENSE.txt",
+    "README.rdoc"
+  ]
+  gem.licenses = ["MIT"]
+  gem.rdoc_options = ["--main", "README.rdoc"]
+  gem.version       = CasClient::VERSION
+  gem.files         = `git ls-files`.split($\)
+  gem.executables   = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }
+  gem.test_files    = gem.files.grep(%r{^(test|spec|features)/})
+  gem.name          = "rubycas-client"
+  gem.require_paths = ["lib"]
 
-  if s.respond_to? :specification_version then
-    current_version = Gem::Specification::CURRENT_SPECIFICATION_VERSION
-    s.specification_version = 2
-
-    if current_version >= 3 then
-      s.add_runtime_dependency(%q<activesupport>, [">= 0"])
-      s.add_development_dependency(%q<hoe>, [">= 1.7.0"])
-    else
-      s.add_dependency(%q<activesupport>, [">= 0"])
-      s.add_dependency(%q<hoe>, [">= 1.7.0"])
-    end
+  gem.add_dependency("activesupport")
+  gem.add_development_dependency("rake")
+  gem.add_development_dependency("database_cleaner", "~> 0.9.1")
+  gem.add_development_dependency("json")
+  gem.add_development_dependency("rspec")
+  gem.add_development_dependency("appraisal")
+  gem.add_development_dependency("rails")
+  gem.add_development_dependency("simplecov")
+  if defined?(JRUBY_VERSION)
+    gem.add_development_dependency("activerecord-jdbcsqlite3-adapter")
   else
-    s.add_dependency(%q<activesupport>, [">= 0"])
-    s.add_dependency(%q<hoe>, [">= 1.7.0"])
+    gem.add_development_dependency("sqlite3")
   end
 end

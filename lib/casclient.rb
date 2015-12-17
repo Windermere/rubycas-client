@@ -56,7 +56,7 @@ module CASClient
     # Log using the appropriate method if we have a logger
     # if we dont' have a logger, gracefully ignore.
     def method_missing(name, *args)
-      if @real_logger && @real_logger.respond_to?(name)
+      if !@real_logger.nil? && @real_logger.respond_to?(name)
         @real_logger.send(name, *args)
       end
     end
@@ -66,7 +66,12 @@ end
 require 'casclient/tickets'
 require 'casclient/responses'
 require 'casclient/client'
-require 'casclient/version'
+require 'casclient/tickets/storage'
+autoload :ACTIVE_RECORD_TICKET_STORE, 'casclient/tickets/storage/active_record_ticket_store'
+if defined?(Rails) && defined?(ActionController::Base)
+  require 'casclient/frameworks/rails/filter'
+  require 'casclient/frameworks/rails/cas_proxy_callback_controller'
+end
 
 # Detect legacy configuration and show appropriate error message
 module CAS
