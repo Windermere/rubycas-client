@@ -17,12 +17,6 @@ module CASClient
 
       raise ArgumentError, "Missing :cas_base_url parameter!" unless conf[:cas_base_url]
 
-      if conf.has_key?("encode_extra_attributes_as")
-        unless (conf[:encode_extra_attributes_as] == :json || conf[:encode_extra_attributes_as] == :yaml)
-          raise ArgumentError, "Unkown Value for :encode_extra_attributes_as parameter! Allowed options are json or yaml - #{conf[:encode_extra_attributes_as]}"
-        end
-      end
-
       @cas_base_url      = conf[:cas_base_url].gsub(/\/$/, '')
       @cas_destination_logout_param_name = conf[:cas_destination_logout_param_name]
 
