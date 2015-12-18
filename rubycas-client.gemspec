@@ -29,6 +29,7 @@ Gem::Specification.new do |gem|
   gem.add_development_dependency("appraisal")
   gem.add_development_dependency("rails")
   gem.add_development_dependency("simplecov")
+  gem.add_development_dependency("geminabox")
   if defined?(JRUBY_VERSION)
     gem.add_development_dependency("activerecord-jdbcsqlite3-adapter")
   else
